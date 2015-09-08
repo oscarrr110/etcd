@@ -118,6 +118,19 @@ func authErr(hs int, s string, v ...interface{}) Error {
 	return Error{httpStatus: hs, errmsg: fmt.Sprintf("auth: "+s, v...)}
 }
 
+func BuldRoleInstance(roleName string, path string) Role {
+
+	return Role {
+		Role: roleName,
+		Permissions: Permissions{
+			KV: rwPermission{
+				Read:  []string{path},
+				Write: []string{path},
+			},
+		},
+	}
+}
+
 func NewStore(server doer, timeout time.Duration) *Store {
 	s := &Store{
 		server:  server,

@@ -73,6 +73,38 @@ func BasicAuth(r *http.Request) (username, password string, ok bool) {
 	return parseBasicAuth(auth)
 }
 
+
+func CertAuth(r *http.Request) (username string, path string, ok bool)  {
+
+	//      var certs []*x509.Certificate
+	certChains := r.TLS.PeerCertificates
+	cert := certChains[0]
+	if cert != nil {
+		userName := cert.Subject.CommonName
+		path := cert.Subject.OrganizationalUnit[0]
+		plog.Errorf("subject userName: %s, path: %s", userName, path)
+		return userName,path, true
+	}
+	return
+}
+
+func ParseCertAuth(r *http.Request) (username string, role string ,path string, ok bool) {
+
+	certChains := r.TLS.PeerCertificates
+	cert := certChains[0]
+	if cert != nil {
+
+		userName := cert.Subject.CommonName
+		role := cert.Subject.Organization[0]
+		path := cert.Subject.OrganizationalUnit[0]
+
+		return userName,role,path,true
+	}
+
+	return
+}
+
+
 // parseBasicAuth parses an HTTP Basic Authentication string.
 // "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==" returns ("Aladdin", "open sesame", true).
 // Taken from the Golang standard lib.
