@@ -89,7 +89,7 @@ func (s *httpAuthAPI) DisableCert(ctx context.Context) error {
 func (s *httpAuthAPI) Enable(ctx context.Context) error {
 	return s.enableDisable(ctx, &authAPIAction{
 		verb:    "PUT",
-		action: "enableCert",
+		action: "enable",
 	})
 }
 
