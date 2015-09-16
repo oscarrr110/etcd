@@ -82,24 +82,28 @@ func hasKeyPrefixAccess(sec *auth.Store, r *http.Request, key string, recursive 
 	var username,rootPath string
 	var ok bool
 	var err error
-
-	certChains := r.TLS.PeerCertificates
-	cert := certChains[0]
-	if cert != nil {
-
-		username, rootPath, ok = netutil.CertAuth(r)
-		if(rootPath != "") {
-			key = "/" + rootPath + key
+	
+	if r.TLS != nil {
+		if len(r.TLS.PeerCertificates) >= 1 {
+			certChains := r.TLS.PeerCertificates
+			cert := certChains[0]
+			if cert != nil {
+		
+				username, rootPath, ok = netutil.CertAuth(r)
+				if(rootPath != "") {
+					key = "/" + rootPath + key
+				}
+				if !ok {
+					return hasGuestAccess(sec, r, key)
+				}
+				user, err = sec.GetUser(username)
+				if err != nil {
+					plog.Warningf("auth: no such user: %s.", username)
+					return false
+				}
+		
+			}
 		}
-		if !ok {
-			return hasGuestAccess(sec, r, key)
-		}
-		user, err = sec.GetUser(username)
-		if err != nil {
-			plog.Warningf("auth: no such user: %s.", username)
-			return false
-		}
-
 	}
 	//Does not get peer certificate or cert parse failed
 	if(username == "" || rootPath == "") {
