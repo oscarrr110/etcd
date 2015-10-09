@@ -94,9 +94,17 @@ func ParseCertAuth(r *http.Request) (username string, role string ,path string, 
 	cert := certChains[0]
 	if cert != nil {
 
-		userName := cert.Subject.CommonName
-		role := cert.Subject.Organization[0]
-		path := cert.Subject.OrganizationalUnit[0]
+//		userName := cert.Subject.CommonName
+//		role := cert.Subject.Organization[0]
+//		path := cert.Subject.OrganizationalUnit[0]
+
+		userRolePath := cert.Subject.CommonName
+		plog.Errorf("userRolePath: %s", userRolePath)
+
+		userRolePathArray := strings.Split(userRolePath, "|")
+		userName := userRolePathArray[0]
+		role := userRolePathArray[1]
+		path := userRolePathArray[2]
 
 		return userName,role,path,true
 	}
