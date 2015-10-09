@@ -89,7 +89,7 @@ func hasKeyPrefixAccess(sec *auth.Store, r *http.Request, key string, recursive 
 			cert := certChains[0]
 			if cert != nil {
 		
-				username, rootPath, ok = netutil.CertAuth(r)
+				username, _, rootPath, ok = netutil.ParseCertAuth(r)
 				if(rootPath != "") {
 					key = "/" + rootPath + key
 				}
