@@ -73,11 +73,6 @@ func hasKeyPrefixAccess(sec *auth.Store, r *http.Request, key string, recursive 
 		// No store means no auth available, eg, tests.
 		return true
 	}
-	//Ensure that auth must be enabled.
-	if !sec.AuthEnabled() {
-		sec.EnableAuth()
-//		return true
-	}
 
 
 	var user auth.User
@@ -93,6 +88,10 @@ func hasKeyPrefixAccess(sec *auth.Store, r *http.Request, key string, recursive 
 				username, roleName, path, isOK := netutil.ParseCertAuth(r)
 				//Cert parse error , Try to use basic auth way
 				if !isOK {
+
+					if !sec.AuthEnabled() {
+						return true
+					}
 
 					username, password, ok := netutil.BasicAuth(r)
 					if !ok {
@@ -111,6 +110,13 @@ func hasKeyPrefixAccess(sec *auth.Store, r *http.Request, key string, recursive 
 					}
 
 				} else {
+					//In this mode, auth must be enabled
+					if !sec.AuthEnabled() {
+						if(!sec.AuthEnabled()) {
+							plog.Warningf("auth access enabled");
+							return false;
+						}
+					}
 
 					plog.Warningf("cert parse result userName: %s, roleName: %s, path: %s, key: %s", username, roleName, path, key)
 
@@ -161,6 +167,11 @@ func hasKeyPrefixAccess(sec *auth.Store, r *http.Request, key string, recursive 
 			}
 		}
 	}
+
+	if !sec.AuthEnabled() {
+		return true
+	}
+
 	//Does not get peer certificate(http access or does not need to check client certificate) or cert parse failed
 	if(username == "" || rootPath == "") {
 		username, password, ok := netutil.BasicAuth(r)
