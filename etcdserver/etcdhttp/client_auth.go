@@ -113,7 +113,7 @@ func hasKeyPrefixAccess(sec *auth.Store, r *http.Request, key string, recursive 
 					//In this mode, auth must be enabled
 					if !sec.AuthEnabled() {
 
-						err = sec.EnableAuthWithoutCheck()
+						err = sec.EnableAuthWithoutRootCheck()
 						if err == nil {
 							plog.Noticef("auth: enabled auth")
 						} else {

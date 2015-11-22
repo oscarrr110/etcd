@@ -402,7 +402,21 @@ func (s *Store) EnableAuth() error {
 }
 
 
-func (s *Store) EnableAuthWithoutCheck() error {
+func (s *Store) EnableAuthWithoutRootCheck() error {
+
+	if s.AuthEnabled() {
+		return authErr(http.StatusConflict, "already enabled")
+	}
+	_, err := s.GetRole(GuestRoleName)
+	if err != nil {
+		plog.Printf("no guest role access found, creating default")
+		err = s.CreateRole(guestRole)
+		if err != nil {
+			plog.Errorf("error creating guest role. aborting auth enable.")
+			return err
+		}
+	}
+
 	err = s.enableAuth()
 	if err == nil {
 		plog.Noticef("auth: enabled auth")
