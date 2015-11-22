@@ -73,14 +73,15 @@ func hasKeyPrefixAccess(sec *auth.Store, r *http.Request, key string, recursive 
 		// No store means no auth available, eg, tests.
 		return true
 	}
+	//Ensure that auth must be enabled.
 	if !sec.AuthEnabled() {
-		return true
+		sec.EnableAuth()
+//		return true
 	}
 
 
 	var user auth.User
 	var username,rootPath string
-	var ok bool
 	var err error
 	
 	if r.TLS != nil {
@@ -88,24 +89,79 @@ func hasKeyPrefixAccess(sec *auth.Store, r *http.Request, key string, recursive 
 			certChains := r.TLS.PeerCertificates
 			cert := certChains[0]
 			if cert != nil {
-		
-				username, _, rootPath, ok = netutil.ParseCertAuth(r)
-				if(rootPath != "") {
-					key = "/" + rootPath + key
+
+				username, roleName, path, isOK := netutil.ParseCertAuth(r)
+				//Cert parse error , Try to use basic auth way
+				if !isOK {
+
+					username, password, ok := netutil.BasicAuth(r)
+					if !ok {
+						return hasGuestAccess(sec, r, key)
+					}
+					user, err = sec.GetUser(username)
+					if err != nil {
+						plog.Warningf("auth: no such user: %s.", username)
+						return false
+					}
+					authAsUser := user.CheckPassword(password)
+
+					if !authAsUser {
+						plog.Warningf("auth: incorrect password for user: %s.", username)
+						return false
+					}
+
+				} else {
+
+					plog.Warningf("cert parse result %s, %s, %s, %t", username, roleName, path)
+
+					user, err = sec.GetUser(username)
+					//Can not get user info, try to init auth info according to clientCert basic function
+					if err != nil {
+						plog.Warningf("auth: no such user, try to create user and role : %s.", username)
+
+						//add full path directory
+						path = "/" + path + "/*"
+
+						var createRole = auth.BuldRoleInstance(roleName, path)
+
+						plog.Warningf("build role success, role info: %v", createRole)
+
+						err := sec.CreateRole(createRole)
+						if err != nil {
+							plog.Errorf("create role error: %v", createRole)
+							return false;
+						}
+
+						plog.Warningf("create role success")
+
+						var createUser = auth.User{
+							User: username,
+							Password: username,
+							Roles: []string{roleName},
+						}
+
+						plog.Warningf("build user success, user info: %v", createUser)
+
+						_, err = sec.CreateUser(createUser)
+						if err != nil {
+							plog.Errorf("create user error: %v", createUser)
+							return false;
+						}
+
+						plog.Warningf("create user success")
+
+					}
+
 				}
-				if !ok {
-					return hasGuestAccess(sec, r, key)
-				}
-				user, err = sec.GetUser(username)
-				if err != nil {
-					plog.Warningf("auth: no such user: %s.", username)
-					return false
-				}
+//				if(rootPath != "") {
+//					key = "/" + rootPath + key
+//				}
+
 		
 			}
 		}
 	}
-	//Does not get peer certificate or cert parse failed
+	//Does not get peer certificate(http access or does not need to check client certificate) or cert parse failed
 	if(username == "" || rootPath == "") {
 		username, password, ok := netutil.BasicAuth(r)
 		if !ok {
