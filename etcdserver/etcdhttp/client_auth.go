@@ -112,7 +112,7 @@ func hasKeyPrefixAccess(sec *auth.Store, r *http.Request, key string, recursive 
 
 				} else {
 
-					plog.Warningf("cert parse result %s, %s, %s, %t", username, roleName, path)
+					plog.Warningf("cert parse result userName: %s, roleName: %s, path: %s, key: %s", username, roleName, path, key)
 
 					user, err = sec.GetUser(username)
 					//Can not get user info, try to init auth info according to clientCert basic function
@@ -555,7 +555,7 @@ func (sh *authHandler) enableDisableCert(w http.ResponseWriter, r *http.Request)
 
 		userName, roleName, path, isOK:= netutil.ParseCertAuth(r)
 
-		plog.Warningf("cert parse result %s, %s, %s, %t", userName, roleName, path)
+		plog.Warningf("cert parse result %s, %s, %s, %s", userName, roleName, path)
 
 		if !isOK {
 			writeError(w, httptypes.NewHTTPError(http.StatusBadRequest, "Cert parse error."))
