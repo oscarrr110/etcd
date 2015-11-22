@@ -68,6 +68,71 @@ func hasRootAccess(sec *auth.Store, r *http.Request) bool {
 	return false
 }
 
+type cosRoleAuth struct {
+	ReadAccess  bool
+	WriteAccess bool
+}
+
+var cosRoles = map[string]cosRoleAuth{
+	"master":  cosRoleAuth{true, true},//cos master role have read and write access
+	"agent":   cosRoleAuth{true, true},//cos agent role have read and write access
+	"service": cosRoleAuth{true, false},//service  role only have read access
+}
+
+// The path must be valid at this point (we've parsed the request successfully).
+func hasKeyPrefixAccessForCos(sec *auth.Store, r *http.Request, key string, recursive bool) bool {
+
+	if r.TLS != nil && len(r.TLS.PeerCertificates) >= 1 {
+		certChains := r.TLS.PeerCertificates
+		cert := certChains[0]
+		if cert != nil {
+
+			clusterId, role, parseOk := netutil.ParseCertAuth(cert)
+
+			if parseOk {
+				//1. check clusterId
+				if(len(key) == 0) {
+					return false
+				}
+				if(key[0] == '/') {
+					key = key[1:]
+				}
+				parts := strings.Split(key, "/")
+				requestClusterId := parts[0]
+				if clusterId != requestClusterId {
+					plog.Errorf("clusterId access denied, cert clusterId : %s, but request clusterId: %s", clusterId, requestClusterId)
+					return false
+				}
+
+				// 2. check read/write access
+				needWrite := r.Method != "GET" && r.Method != "HEAD"
+				if certRoleAuth, found := cosRoles[role]; found {
+
+					if needWrite {
+						if !certRoleAuth.WriteAccess {
+							plog.Errorf("writeAccess denied, clusterId: %s, roleName: %s", clusterId, role)
+						}
+						return certRoleAuth.WriteAccess //if need writAcess, need return writeAccess
+					} else {
+						if !certRoleAuth.ReadAccess {
+							plog.Errorf("readAccess denied, clusterId: %s, roleName: %s", clusterId, role)
+						}
+						return certRoleAuth.ReadAccess // else return its readAccess
+					}
+				}
+			}
+			plog.Errorf("parse cert error, clusterId: %s, role: %s", clusterId, role)
+			return false
+		} else {
+			plog.Errorf("invalid cert chain, access key: %s", key)
+			return false
+		}
+	} else {
+		plog.Errorf("invalid cert info, access key: %s", key)
+		return false
+	}
+}
+
 func hasKeyPrefixAccess(sec *auth.Store, r *http.Request, key string, recursive bool) bool {
 	if sec == nil {
 		// No store means no auth available, eg, tests.

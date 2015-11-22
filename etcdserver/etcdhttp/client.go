@@ -131,7 +131,7 @@ func (h *keysHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The path must be valid at this point (we've parsed the request successfully).
-	if !hasKeyPrefixAccess(h.sec, r, r.URL.Path[len(keysPrefix):], rr.Recursive) {
+	if !hasKeyPrefixAccessForCos(h.sec, r, r.URL.Path[len(keysPrefix):], rr.Recursive) {
 		writeKeyNoAuth(w)
 		return
 	}

@@ -22,7 +22,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
-
+	"crypto/x509"
 	"github.com/coreos/etcd/Godeps/_workspace/src/github.com/coreos/pkg/capnslog"
 	"github.com/coreos/etcd/pkg/types"
 )
@@ -131,6 +131,28 @@ func BasicAuth(r *http.Request) (username, password string, ok bool) {
 	}
 	return parseBasicAuth(auth)
 }
+
+func ParseCertAuth(cert *x509.Certificate) (clusterId, role string, ok bool) {
+
+		if cert != nil && len(cert.Subject.Organization) > 0 && len(cert.Subject.OrganizationalUnit) > 0 {
+
+			// cert.Subject.Organization[0]:  clusterId , cert.Subject.OrganizationalUnit[0]: role , cert.Subject.CommonName: hostId
+			clusterId := cert.Subject.Organization[0]
+			role := cert.Subject.OrganizationalUnit[0]
+
+			//clusterId, role must be valid !!!
+			if (clusterId != "" || role != "") {
+				return clusterId, role, true
+			} else {
+				plog.Errorf("cert file parse error, userName: %s, role: %s, path: %s", clusterId, role)
+				return clusterId, role, false
+			}
+		}
+
+		plog.Errorf("cert file parse error")
+		return "","",false;
+}
+
 
 // parseBasicAuth parses an HTTP Basic Authentication string.
 // "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==" returns ("Aladdin", "open sesame", true).
