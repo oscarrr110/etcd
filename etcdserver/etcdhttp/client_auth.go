@@ -73,23 +73,143 @@ func hasKeyPrefixAccess(sec *auth.Store, r *http.Request, key string, recursive 
 		// No store means no auth available, eg, tests.
 		return true
 	}
+
+
+	var user auth.User
+	var userName, roleName, path string
+	var isOK bool
+	var err error
+	
+	if r.TLS != nil {
+		if len(r.TLS.PeerCertificates) >= 1 {
+			certChains := r.TLS.PeerCertificates
+			cert := certChains[0]
+			if cert != nil {
+				userName, roleName, path, isOK = netutil.ParseCertAuth(r)
+				//Cert parse error , Try to use basic auth way
+				if !isOK {
+
+					if !sec.AuthEnabled() {
+						return true
+					}
+
+					userName, password, isOK := netutil.BasicAuth(r)
+					if !isOK {
+						return hasGuestAccess(sec, r, key)
+					}
+					user, err = sec.GetUser(userName)
+					if err != nil {
+						plog.Warningf("auth: no such user: %s.", userName)
+						return false
+					}
+					authAsUser := user.CheckPassword(password)
+
+					if !authAsUser {
+						plog.Warningf("auth: incorrect password for user: %s.", userName)
+						return false
+					}
+
+				} else {
+					//In this mode, auth must be enabled
+					if !sec.AuthEnabled() {
+
+						//1. create root
+						var createUser = auth.User {
+							User: "root",
+							Password: auth.RootRoleName,
+							Roles: []string{auth.RootRoleName},
+						}
+
+						_, _, err = sec.CreateOrUpdateUser(createUser)
+						if err != nil {
+							plog.Errorf("CreateOrUpdateUser root error (%v)", err)
+							return false;
+						}
+						// 2. enable auth
+						err = sec.EnableAuth()
+						if err == nil {
+							plog.Noticef("auth: enabled auth")
+						} else {
+							plog.Errorf("error enabling auth (%v)", err)
+							return false;
+						}
+					}
+
+					plog.Warningf("cert parse result userName: %s, roleName: %s, path: %s, key: %s", userName, roleName, path, key)
+
+					user, err = sec.GetUser(userName)
+					//Can not get user info, try to init auth info according to clientCert basic function
+					if err != nil {
+						plog.Warningf("auth: no such user, try to create user and role : %s.", userName)
+
+						//add full path directory
+						path = "/" + path + "/*"
+
+						var createRole = auth.BuldRoleInstance(roleName, path)
+
+						plog.Warningf("build role success, role info: %v", createRole)
+
+						err := sec.CreateRole(createRole)
+						if err != nil {
+							plog.Errorf("create role error: %v", createRole)
+							return false;
+						}
+
+						plog.Warningf("create role success")
+
+						var createUser = auth.User{
+							User: userName,
+							Password: userName,
+							Roles: []string{roleName},
+						}
+
+						plog.Warningf("build user success, user info: %v", createUser)
+
+						_, err = sec.CreateUser(createUser)
+						if err != nil {
+							plog.Errorf("create user error: %v", createUser)
+							return false;
+						}
+
+						plog.Warningf("create user success")
+
+					}
+
+				}
+//				if(rootPath != "") {
+//					key = "/" + rootPath + key
+//				}
+
+		
+			}
+		}
+	}
+
 	if !sec.AuthEnabled() {
 		return true
 	}
-	username, password, ok := netutil.BasicAuth(r)
-	if !ok {
-		return hasGuestAccess(sec, r, key)
+
+	//Does not get peer certificate(http access or does not need to check client certificate) or cert parse failed
+	if(userName == "" ) {
+		userName, password, ok := netutil.BasicAuth(r)
+		if !ok {
+			return hasGuestAccess(sec, r, key)
+		}
+		user, err = sec.GetUser(userName)
+		if err != nil {
+			plog.Warningf("auth: no such user: %s.", userName)
+			return false
+		}
+		authAsUser := user.CheckPassword(password)
+
+		if !authAsUser {
+			plog.Warningf("auth: incorrect password for user: %s.", userName)
+			return false
+		}
 	}
-	user, err := sec.GetUser(username)
-	if err != nil {
-		plog.Warningf("auth: no such user: %s.", username)
-		return false
-	}
-	authAsUser := user.CheckPassword(password)
-	if !authAsUser {
-		plog.Warningf("auth: incorrect password for user: %s.", username)
-		return false
-	}
+
+
+	plog.Warningf("access key : %s.", key)
 	writeAccess := r.Method != "GET" && r.Method != "HEAD"
 	for _, roleName := range user.Roles {
 		role, err := sec.GetRole(roleName)
@@ -101,7 +221,7 @@ func hasKeyPrefixAccess(sec *auth.Store, r *http.Request, key string, recursive 
 		}
 		return role.HasKeyAccess(key, writeAccess)
 	}
-	plog.Warningf("auth: invalid access for user %s on key %s.", username, key)
+	plog.Warningf("auth: invalid access for user %s on key %s.", userName, key)
 	return false
 }
 
@@ -129,6 +249,7 @@ func handleAuth(mux *http.ServeMux, sh *authHandler) {
 	mux.HandleFunc(authPrefix+"/users", capabilityHandler(authCapability, sh.baseUsers))
 	mux.HandleFunc(authPrefix+"/users/", capabilityHandler(authCapability, sh.handleUsers))
 	mux.HandleFunc(authPrefix+"/enable", capabilityHandler(authCapability, sh.enableDisable))
+	mux.HandleFunc(authPrefix+"/enableCert", capabilityHandler(authCapability, sh.enableDisableCert))
 }
 
 func (sh *authHandler) baseRoles(w http.ResponseWriter, r *http.Request) {
@@ -423,5 +544,122 @@ func (sh *authHandler) enableDisable(w http.ResponseWriter, r *http.Request) {
 			writeError(w, err)
 			return
 		}
+	}
+}
+
+type rwPermission struct {
+	Read  []string `json:"read"`
+	Write []string `json:"write"`
+}
+
+func (sh *authHandler) enableDisableCert(w http.ResponseWriter, r *http.Request) {
+	if !allowMethod(w, r.Method, "GET", "PUT", "DELETE") {
+		return
+	}
+	if !hasWriteRootAccess(sh.sec, r) {
+		writeNoAuth(w)
+		return
+	}
+	w.Header().Set("X-Etcd-Cluster-ID", sh.cluster.ID().String())
+	w.Header().Set("Content-Type", "application/json")
+	plog.Warningf("enable/disable cert auth, current method %s", r.Method)
+	isEnabled := sh.sec.AuthEnabled()
+	switch r.Method {
+	case "GET":
+		jsonDict := enabled{isEnabled}
+		err := json.NewEncoder(w).Encode(jsonDict)
+		if err != nil {
+			plog.Warningf("error encoding auth state on %s", r.URL)
+		}
+	case "PUT":
+
+		if !isEnabled {
+			err := sh.sec.EnableAuth()
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+		}
+
+		userName, roleName, path, isOK:= netutil.ParseCertAuth(r)
+
+		plog.Warningf("cert parse result %s, %s, %s, %s", userName, roleName, path)
+
+		if !isOK {
+			writeError(w, httptypes.NewHTTPError(http.StatusBadRequest, "Cert parse error."))
+		}
+
+		//add full path directory
+		path = "/" + path + "/*"
+
+		var createRole = auth.BuldRoleInstance(roleName, path)
+
+		plog.Warningf("build role success, role info: %v", createRole)
+
+		err := sh.sec.CreateRole(createRole)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+
+		plog.Warningf("create role success")
+
+		var createUser = auth.User {
+			User: userName,
+			Password: userName,
+			Roles: []string{roleName},
+		}
+
+		plog.Warningf("build user success, user info: %v", createUser)
+
+		out, err := sh.sec.CreateUser(createUser)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+
+		plog.Warningf("create user success")
+
+		err = json.NewEncoder(w).Encode(out)
+		if err != nil {
+			plog.Warningf("forUser error encoding on %s", r.URL)
+			return
+		}
+		return
+
+	case "DELETE":
+
+		if isEnabled {
+			err := sh.sec.DisableAuth()
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+		}
+
+		userName, roleName, _, isOK:= netutil.ParseCertAuth(r)
+
+		if !isOK {
+			writeError(w, httptypes.NewHTTPError(http.StatusBadRequest, "Cert parse error."))
+		}
+
+		err := sh.sec.DeleteRole(roleName)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+
+		plog.Warningf("Delete role success")
+
+		err = sh.sec.DeleteUser(userName)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+
+		plog.Warningf("Delete user success")
+		
+		return
+
 	}
 }

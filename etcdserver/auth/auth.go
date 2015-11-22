@@ -118,6 +118,19 @@ func authErr(hs int, s string, v ...interface{}) Error {
 	return Error{httpStatus: hs, errmsg: fmt.Sprintf("auth: "+s, v...)}
 }
 
+func BuldRoleInstance(roleName string, path string) Role {
+
+	return Role {
+		Role: roleName,
+		Permissions: Permissions{
+			KV: rwPermission{
+				Read:  []string{path},
+				Write: []string{path},
+			},
+		},
+	}
+}
+
 func NewStore(server doer, timeout time.Duration) *Store {
 	s := &Store{
 		server:  server,
@@ -387,6 +400,32 @@ func (s *Store) EnableAuth() error {
 	}
 	return err
 }
+
+
+func (s *Store) EnableAuthWithoutRootCheck() error {
+
+	if s.AuthEnabled() {
+		return authErr(http.StatusConflict, "already enabled")
+	}
+	_, err := s.GetRole(GuestRoleName)
+	if err != nil {
+		plog.Printf("no guest role access found, creating default")
+		err = s.CreateRole(guestRole)
+		if err != nil {
+			plog.Errorf("error creating guest role. aborting auth enable.")
+			return err
+		}
+	}
+
+	err = s.enableAuth()
+	if err == nil {
+		plog.Noticef("auth: enabled auth")
+	} else {
+		plog.Errorf("error enabling auth (%v)", err)
+	}
+	return err
+}
+
 
 func (s *Store) DisableAuth() error {
 	if !s.AuthEnabled() {

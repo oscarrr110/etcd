@@ -59,18 +59,45 @@ type AuthAPI interface {
 
 	// Disable auth.
 	Disable(ctx context.Context) error
+	
+	// Enable cert auth.
+	EnableCert(ctx context.Context) error
+
+	// Enable cert auth.
+	DisableCert(ctx context.Context) error
 }
 
 type httpAuthAPI struct {
 	client httpClient
 }
 
+func (s *httpAuthAPI) EnableCert(ctx context.Context) error {
+	return s.enableDisable(ctx, &authAPIAction{
+		verb:  "PUT",
+		action: "enableCert",
+	})
+}
+
+func (s *httpAuthAPI) DisableCert(ctx context.Context) error {
+	return s.enableDisable(ctx, &authAPIAction{
+		verb:  "DELETE",
+		action: "enableCert",
+	})
+}
+
+
 func (s *httpAuthAPI) Enable(ctx context.Context) error {
-	return s.enableDisable(ctx, &authAPIAction{"PUT"})
+	return s.enableDisable(ctx, &authAPIAction{
+		verb:    "PUT",
+		action: "enable",
+	})
 }
 
 func (s *httpAuthAPI) Disable(ctx context.Context) error {
-	return s.enableDisable(ctx, &authAPIAction{"DELETE"})
+	return s.enableDisable(ctx, &authAPIAction{
+		verb:    "DELETE",
+		action:  "enable",
+	})
 }
 
 func (s *httpAuthAPI) enableDisable(ctx context.Context, req httpAction) error {
@@ -91,10 +118,11 @@ func (s *httpAuthAPI) enableDisable(ctx context.Context, req httpAction) error {
 
 type authAPIAction struct {
 	verb string
+	action string
 }
 
 func (l *authAPIAction) HTTPRequest(ep url.URL) *http.Request {
-	u := v2AuthURL(ep, "enable", "")
+	u := v2AuthURL(ep, l.action, "")
 	req, _ := http.NewRequest(l.verb, u.String(), nil)
 	return req
 }

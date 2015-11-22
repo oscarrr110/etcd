@@ -9,3 +9,5 @@
 *.swp
 /hack/insta-discovery/.env
 *.test
+*.idea
+infra0

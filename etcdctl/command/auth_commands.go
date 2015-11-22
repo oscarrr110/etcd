@@ -39,8 +39,27 @@ func NewAuthCommands() cli.Command {
 				Usage:  "disable auth access controls",
 				Action: actionAuthDisable,
 			},
+			cli.Command{
+				Name:   "enableCert",
+				Usage:  "enable auth access controls using client certificate",
+				Action: actionAuthEnableCert,
+			},
+			cli.Command{
+				Name:   "disableCert",
+				Usage:  "disable auth access controls using client certificate",
+				Action: actionAuthDisableCert,
+			},
 		},
 	}
+}
+
+
+func actionAuthEnableCert(c *cli.Context) {
+	authEnableDisableCert(c, true)
+}
+
+func actionAuthDisableCert(c *cli.Context) {
+	authEnableDisableCert(c, false)
 }
 
 func actionAuthEnable(c *cli.Context) {
@@ -83,5 +102,30 @@ func authEnableDisable(c *cli.Context, enable bool) {
 		fmt.Println("Authentication Enabled")
 	} else {
 		fmt.Println("Authentication Disabled")
+	}
+}
+
+func authEnableDisableCert(c *cli.Context, enable bool) {
+	if len(c.Args()) != 0 {
+		fmt.Fprintln(os.Stderr, "No arguments accepted")
+		os.Exit(1)
+	}
+	s := mustNewAuthAPI(c)
+	ctx, cancel := context.WithTimeout(context.Background(), client.DefaultRequestTimeout)
+	var err error
+	if enable {
+		err = s.EnableCert(ctx)
+	} else {
+		err = s.DisableCert(ctx)
+	}
+	cancel()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	if enable {
+		fmt.Println("Authentication Cert Enabled")
+	} else {
+		fmt.Println("Authentication Cert Disabled")
 	}
 }
