@@ -76,7 +76,8 @@ func hasKeyPrefixAccess(sec *auth.Store, r *http.Request, key string, recursive 
 
 
 	var user auth.User
-	var username,rootPath string
+	var userName, roleName, path string
+	var isOK bool
 	var err error
 	
 	if r.TLS != nil {
@@ -84,8 +85,7 @@ func hasKeyPrefixAccess(sec *auth.Store, r *http.Request, key string, recursive 
 			certChains := r.TLS.PeerCertificates
 			cert := certChains[0]
 			if cert != nil {
-
-				username, roleName, path, isOK := netutil.ParseCertAuth(r)
+				userName, roleName, path, isOK = netutil.ParseCertAuth(r)
 				//Cert parse error , Try to use basic auth way
 				if !isOK {
 
@@ -93,19 +93,19 @@ func hasKeyPrefixAccess(sec *auth.Store, r *http.Request, key string, recursive 
 						return true
 					}
 
-					username, password, ok := netutil.BasicAuth(r)
-					if !ok {
+					userName, password, isOK := netutil.BasicAuth(r)
+					if !isOK {
 						return hasGuestAccess(sec, r, key)
 					}
-					user, err = sec.GetUser(username)
+					user, err = sec.GetUser(userName)
 					if err != nil {
-						plog.Warningf("auth: no such user: %s.", username)
+						plog.Warningf("auth: no such user: %s.", userName)
 						return false
 					}
 					authAsUser := user.CheckPassword(password)
 
 					if !authAsUser {
-						plog.Warningf("auth: incorrect password for user: %s.", username)
+						plog.Warningf("auth: incorrect password for user: %s.", userName)
 						return false
 					}
 
@@ -122,12 +122,12 @@ func hasKeyPrefixAccess(sec *auth.Store, r *http.Request, key string, recursive 
 						}
 					}
 
-					plog.Warningf("cert parse result userName: %s, roleName: %s, path: %s, key: %s", username, roleName, path, key)
+					plog.Warningf("cert parse result userName: %s, roleName: %s, path: %s, key: %s", userName, roleName, path, key)
 
-					user, err = sec.GetUser(username)
+					user, err = sec.GetUser(userName)
 					//Can not get user info, try to init auth info according to clientCert basic function
 					if err != nil {
-						plog.Warningf("auth: no such user, try to create user and role : %s.", username)
+						plog.Warningf("auth: no such user, try to create user and role : %s.", userName)
 
 						//add full path directory
 						path = "/" + path + "/*"
@@ -145,8 +145,8 @@ func hasKeyPrefixAccess(sec *auth.Store, r *http.Request, key string, recursive 
 						plog.Warningf("create role success")
 
 						var createUser = auth.User{
-							User: username,
-							Password: username,
+							User: userName,
+							Password: userName,
 							Roles: []string{roleName},
 						}
 
@@ -177,20 +177,20 @@ func hasKeyPrefixAccess(sec *auth.Store, r *http.Request, key string, recursive 
 	}
 
 	//Does not get peer certificate(http access or does not need to check client certificate) or cert parse failed
-	if(username == "" || rootPath == "") {
-		username, password, ok := netutil.BasicAuth(r)
+	if(userName == "" ) {
+		userName, password, ok := netutil.BasicAuth(r)
 		if !ok {
 			return hasGuestAccess(sec, r, key)
 		}
-		user, err = sec.GetUser(username)
+		user, err = sec.GetUser(userName)
 		if err != nil {
-			plog.Warningf("auth: no such user: %s.", username)
+			plog.Warningf("auth: no such user: %s.", userName)
 			return false
 		}
 		authAsUser := user.CheckPassword(password)
 
 		if !authAsUser {
-			plog.Warningf("auth: incorrect password for user: %s.", username)
+			plog.Warningf("auth: incorrect password for user: %s.", userName)
 			return false
 		}
 	}
@@ -208,7 +208,7 @@ func hasKeyPrefixAccess(sec *auth.Store, r *http.Request, key string, recursive 
 		}
 		return role.HasKeyAccess(key, writeAccess)
 	}
-	plog.Warningf("auth: invalid access for user %s on key %s.", username, key)
+	plog.Warningf("auth: invalid access for user %s on key %s.", userName, key)
 	return false
 }
 
