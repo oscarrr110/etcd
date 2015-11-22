@@ -141,7 +141,7 @@ func ParseCertAuth(cert *x509.Certificate) (clusterId, role string, ok bool) {
 			role := cert.Subject.OrganizationalUnit[0]
 
 			//clusterId, role must be valid !!!
-			if (clusterId != "" || role != "") {
+			if (clusterId != "" && role != "") {
 				return clusterId, role, true
 			} else {
 				plog.Errorf("cert file parse error, userName: %s, role: %s, path: %s", clusterId, role)
