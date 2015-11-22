@@ -401,6 +401,18 @@ func (s *Store) EnableAuth() error {
 	return err
 }
 
+
+func (s *Store) EnableAuthWithoutCheck() error {
+	err = s.enableAuth()
+	if err == nil {
+		plog.Noticef("auth: enabled auth")
+	} else {
+		plog.Errorf("error enabling auth (%v)", err)
+	}
+	return err
+}
+
+
 func (s *Store) DisableAuth() error {
 	if !s.AuthEnabled() {
 		return authErr(http.StatusConflict, "already disabled")
