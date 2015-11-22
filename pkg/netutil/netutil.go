@@ -75,26 +75,38 @@ func BasicAuth(r *http.Request) (username, password string, ok bool) {
 
 func ParseCertAuth(r *http.Request) (username string, role string ,path string, ok bool) {
 
-	certChains := r.TLS.PeerCertificates
-	cert := certChains[0]
-	if cert != nil {
+	if len(r.TLS.PeerCertificates) >= 1 {
+		certChains := r.TLS.PeerCertificates
+		cert := certChains[0]
+		if cert != nil && len(cert.Subject.Organization) > 0 && len(cert.Subject.OrganizationalUnit) > 0 {
 
-//		userName := cert.Subject.CommonName
-//		role := cert.Subject.Organization[0]
-//		path := cert.Subject.OrganizationalUnit[0]
+			// cert.Subject.Organization[0]:  clusterId , cert.Subject.OrganizationalUnit[0]: role , cert.Subject.CommonName: hostId
+			userName := cert.Subject.Organization[0]
+			role := cert.Subject.Organization[0] + "_" + cert.Subject.OrganizationalUnit[0]
+			path := cert.Subject.Organization[0]
 
-		userRolePath := cert.Subject.CommonName
-		plog.Errorf("userRolePath: %s", userRolePath)
+			//		userRolePath := cert.Subject.CommonName
+			//		plog.Errorf("userRolePath: %s", userRolePath)
+			//		userRolePathArray := strings.Split(userRolePath, "|")
+			//		userName := userRolePathArray[0]
+			//		role := userRolePathArray[1]
+			//		path := userRolePathArray[2]
 
-		userRolePathArray := strings.Split(userRolePath, "|")
-		userName := userRolePathArray[0]
-		role := userRolePathArray[1]
-		path := userRolePathArray[2]
-
-		return userName,role,path,true
+			//userName , role , path must be valid !!!
+			if (userName != "" && role != "" && path != "") {
+				return userName, role, path, true
+			} else {
+				plog.Errorf("cert file parse error, userName: %s, role: %s, path: %s", userName, role, path)
+				return userName, role, path, false
+			}
+		} else {
+			plog.Error("cert file parse error")
+			return "", "", "", false
+		}
+	} else {
+		plog.Error("cert info not found")
+		return "", "", "", false
 	}
-
-	return
 }
 
 
